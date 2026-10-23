@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Christy N – AI & DevOps Engineer</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Poppins:wght@600;700;800&display=swap" rel="stylesheet">
+<style>
+:root{--ink:#1e1b4b;--mute:#6b7280;--bg:#fdf2f8;--pink:#ec4899;--orange:#f97316;--yellow:#facc15;--green:#10b981;--blue:#3b82f6;--purple:#8b5cf6}
+*{box-sizing:border-box}
+body{margin:0;background:linear-gradient(135deg,#fdf2f8,#eef2ff 50%,#ecfeff);color:var(--ink);font:13.5px/1.55 Inter,system-ui,sans-serif;padding:28px 12px}
+.page{max-width:860px;margin:0 auto;background:#fff;border-radius:22px;overflow:hidden;box-shadow:0 24px 60px rgba(139,92,246,.2)}
+header{position:relative;padding:34px 38px 26px;background:linear-gradient(115deg,var(--purple),var(--pink) 55%,var(--orange));color:#fff;overflow:hidden}
+header::before,header::after{content:"";position:absolute;border-radius:50%}
+header::before{width:200px;height:200px;right:-50px;top:-70px;background:rgba(250,204,21,.55)}
+header::after{width:120px;height:120px;right:110px;bottom:-60px;background:rgba(59,130,246,.45)}
+header>*{position:relative;z-index:1}
+h1{font:800 40px/1.05 Poppins,sans-serif;margin:0;letter-spacing:-1px}
+.role{font:600 16px Poppins,sans-serif;margin:8px 0 16px;opacity:.95}
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.chips span{background:rgba(255,255,255,.22);border:1px solid rgba(255,255,255,.4);border-radius:999px;padding:3px 12px;font-size:12px;font-weight:500}
+.body{display:grid;grid-template-columns:1fr 250px}
+main{padding:26px 26px 26px 38px}
+aside{padding:26px 26px 26px 22px;background:linear-gradient(180deg,#faf5ff,#eff6ff)}
+h2{font:700 13px Poppins,sans-serif;text-transform:uppercase;letter-spacing:1.5px;margin:0 0 12px;display:inline-block;padding:3px 12px;border-radius:999px;color:#fff;background:var(--c,var(--purple))}
+section{margin-bottom:22px}
+p{margin:0}
+.job{margin-bottom:16px;padding-left:14px;border-left:4px solid var(--c)}
+.head{display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap}
+.head b{font:700 15px Poppins,sans-serif}
+.date{font-size:12px;font-weight:600;color:var(--c)}
+.co{color:var(--mute);font-weight:600;font-size:12.5px;margin-bottom:4px}
+ul{margin:0;padding:0;list-style:none}
+.job li{position:relative;padding-left:15px;margin-top:4px}
+.job li::before{content:"";position:absolute;left:0;top:8px;width:7px;height:7px;border-radius:50%;background:var(--c)}
+.job li strong{color:var(--c)}
+.proj{border-radius:12px;padding:10px 13px;margin-bottom:8px;background:color-mix(in srgb,var(--c) 10%,#fff);border:1px solid color-mix(in srgb,var(--c) 30%,#fff)}
+.proj b{color:var(--c);font-weight:700}
+.stats{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:22px}
+.stat{border-radius:12px;padding:8px 4px;text-align:center;color:#fff;background:var(--c)}
+.stat b{display:block;font:800 19px Poppins,sans-serif}
+.stat span{font-size:11px;opacity:.95}
+.sg{margin-bottom:13px}
+.sg small{display:block;font-weight:700;font-size:12px;margin-bottom:6px;color:var(--c)}
+.tags{display:flex;flex-wrap:wrap;gap:5px}
+.tags span{border-radius:999px;padding:2px 10px;font-size:11.5px;font-weight:600;color:var(--c);background:color-mix(in srgb,var(--c) 14%,#fff);border:1px solid color-mix(in srgb,var(--c) 35%,#fff)}
+aside li{margin-bottom:7px;font-size:12.5px}
+aside li small{display:block;color:var(--mute)}
+@media(max-width:700px){.body{grid-template-columns:1fr}main{padding:22px}header{padding:28px 22px}}
+@media print{@page{size:A4;margin:0}body{background:#fff;padding:0}.page{box-shadow:none;border-radius:0;max-width:none}*{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
+</style>
+</head>
+<body>
+<div class="page">
+<header>
+  <h1>Christy N</h1>
+  <p class="role">AI Engineer &nbsp;•&nbsp; DevOps Engineer</p>
+  <div class="chips"><span>you@email.com</span><span>+1 (555) 000-0000</span><span>City, State</span><span>linkedin.com/in/yourname</span><span>github.com/yourname</span></div>
+</header>
+<div class="body">
+<main>
+  <section style="--c:var(--purple)">
+    <h2>Profile</h2>
+    <p>Engineer with 3 years of experience taking machine learning from notebook to production. I build CI/CD, run Kubernetes platforms, and deploy LLM-powered services that are observable, cost-aware, and reliable.</p>
+  </section>
+  <section>
+    <h2 style="--c:var(--pink)">Experience</h2>
+    <div class="job" style="--c:var(--pink)">
+      <div class="head"><b>AI &amp; DevOps Engineer</b><span class="date">2024 – Present</span></div>
+      <div class="co">Company Name</div>
+      <ul>
+        <li>Deployed LLM inference and RAG services on Kubernetes with autoscaling, cutting p95 latency by <strong>40%</strong>.</li>
+        <li>Built model CI/CD in GitHub Actions and ArgoCD, shrinking releases from 2 days to <strong>30 minutes</strong>.</li>
+        <li>Added token, cost, and quality dashboards in Prometheus and Grafana, saving <strong>25%</strong> on inference spend.</li>
+        <li>Codified GPU and vector-database infrastructure in Terraform across all environments.</li>
+      </ul>
+    </div>
+    <div class="job" style="--c:var(--orange)">
+      <div class="head"><b>DevOps Engineer</b><span class="date">2022 – 2024</span></div>
+      <div class="co">Previous Company</div>
+      <ul>
+        <li>Migrated <strong>20+</strong> services to containers on EKS, reaching <strong>99.95%</strong> uptime.</li>
+        <li>Standardized reusable pipeline templates that onboarded new teams in under a day.</li>
+        <li>Centralized logging and alerting, halving mean time to resolution.</li>
+        <li>Automated security and dependency scanning in every build.</li>
+      </ul>
+    </div>
+  </section>
+  <section>
+    <h2 style="--c:var(--green)">Projects</h2>
+    <div class="proj" style="--c:var(--green)"><b>MLOps Platform</b> – Self-serve training and deployment workflow with MLflow, Kubernetes, and Terraform for 5 data scientists.</div>
+    <div class="proj" style="--c:var(--blue)"><b>Incident Copilot</b> – LLM assistant that summarizes alerts and suggests runbook steps from past incidents.</div>
+  </section>
+</main>
+<aside>
+  <div class="stats">
+    <div class="stat" style="--c:var(--purple)"><b>3 yrs</b><span>Experience</span></div>
+    <div class="stat" style="--c:var(--green)"><b>99.95%</b><span>Uptime</span></div>
+    <div class="stat" style="--c:var(--blue)"><b>40%</b><span>Faster p95</span></div>
+    <div class="stat" style="--c:var(--orange)"><b>25%</b><span>Cost saved</span></div>
+  </div>
+  <section>
+    <h2 style="--c:var(--blue)">Skills</h2>
+    <div class="sg" style="--c:var(--purple)"><small>AI / ML</small><div class="tags"><span>Python</span><span>PyTorch</span><span>LLM APIs</span><span>RAG</span><span>LangChain</span><span>MLflow</span></div></div>
+    <div class="sg" style="--c:var(--pink)"><small>DevOps</small><div class="tags"><span>Kubernetes</span><span>Docker</span><span>Terraform</span><span>GitHub Actions</span><span>ArgoCD</span><span>Linux</span></div></div>
+    <div class="sg" style="--c:var(--green)"><small>Cloud &amp; Monitoring</small><div class="tags"><span>AWS</span><span>GCP</span><span>Prometheus</span><span>Grafana</span><span>Datadog</span></div></div>
+  </section>
+  <section>
+    <h2 style="--c:var(--orange)">Education</h2>
+    <ul><li><b>B.S. Computer Science</b><small>University Name, 2022</small></li></ul>
+  </section>
+  <section>
+    <h2 style="--c:var(--purple)">Certs</h2>
+    <ul><li>AWS Solutions Architect – Associate</li><li>Certified Kubernetes Administrator</li></ul>
+  </section>
+</aside>
+</div>
+</div>
+</body>
+</html>
