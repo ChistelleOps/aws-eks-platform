@@ -1,0 +1,22 @@
+replicaCount: 1
+
+image:
+  repository: postgres
+  tag: "16"
+  pullPolicy: IfNotPresent
+
+database:
+  name: platformdb
+  user: platformuser
+  existingSecret: postgres-credentials
+  passwordKey: password
+
+service:
+  type: ClusterIP
+  port: 5432
+
+persistence:
+  enabled: true
+  storageClass: gp3
+  accessMode: ReadWriteOnce
+  size: 20Gi

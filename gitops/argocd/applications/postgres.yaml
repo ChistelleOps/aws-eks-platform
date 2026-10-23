@@ -1,0 +1,26 @@
+
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+
+metadata:
+  name: postgres
+  namespace: argocd
+
+spec:
+  project: default
+
+  source:
+    repoURL: https://github.com/ChistelleOps/aws-eks-platform.git
+    targetRevision: main
+    path: helm/postgres
+
+    helm:
+      releaseName: dev
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: default
+
+  syncPolicy:
+    syncOptions:
+     - CreateNamespace=true

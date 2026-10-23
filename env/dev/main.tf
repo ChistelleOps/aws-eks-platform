@@ -17,6 +17,7 @@ module "eks" {
 
   cluster_name                 = var.cluster_name
   env                          = var.env
+  aws_region                   = var.aws_region
   endpoint_public_access_cidrs = var.endpoint_public_access_cidrs
   vpc_id                       = module.networking.vpc_id
   private_subnet_ids           = module.networking.private_subnet_ids

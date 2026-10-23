@@ -13,6 +13,7 @@ tfplan
 *.tfvars
 *.tfvars.json
 !*.tfvars.*
+!*.tfvars.example
 
 # Crash logs
 crash.log
@@ -27,3 +28,9 @@ override.tf.json
 # Keep provider dependency lock files
 #!.terraform.lock.hcl
 .terraform.tfstate.lock.info
+
+# Secrets
+.env
+.env.*
+*.pem
+*.key

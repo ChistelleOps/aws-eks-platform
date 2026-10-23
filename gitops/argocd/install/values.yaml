@@ -1,0 +1,23 @@
+
+# Argo CD Helm installation settings
+
+global:
+  domain: localhost
+
+server:
+  replicas: 1
+
+  service:
+    type: ClusterIP
+
+controller:
+  replicas: 1
+
+repoServer:
+  replicas: 1
+
+applicationSet:
+  replicas: 1
+
+notifications:
+  enabled: false

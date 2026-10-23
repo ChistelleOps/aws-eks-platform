@@ -1,0 +1,16 @@
+
+# External Secrets Operator Helm configuration
+
+installCRDs: true
+
+replicaCount: 1
+
+serviceAccount:
+  create: true
+  name: external-secrets
+
+webhook:
+  replicaCount: 1
+
+certController:
+  replicaCount: 1
