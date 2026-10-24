@@ -1,0 +1,48 @@
+
+name: Publish Docker Images to ECR
+
+on:
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  publish:
+    name: Build and Push Images
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials using OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/aws-eks-platform-github-actions
+          aws-region: us-east-1
+
+      - name: Log in to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build, tag, and push images
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          docker build \
+            -t "$ECR_REGISTRY/aws-eks-platform/platform-api:$IMAGE_TAG" \
+            ./apps/platform-api
+
+          docker build \
+            -t "$ECR_REGISTRY/aws-eks-platform/portfolio:$IMAGE_TAG" \
+            ./apps/portfolio
+
+          docker push \
+            "$ECR_REGISTRY/aws-eks-platform/platform-api:$IMAGE_TAG"
+
+          docker push \
+            "$ECR_REGISTRY/aws-eks-platform/portfolio:$IMAGE_TAG"
+
