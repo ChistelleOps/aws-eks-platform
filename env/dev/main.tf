@@ -21,7 +21,7 @@ module "eks" {
   endpoint_public_access_cidrs = var.endpoint_public_access_cidrs
   vpc_id                       = module.networking.vpc_id
   private_subnet_ids           = module.networking.private_subnet_ids
-  platform_admin_role_arn      = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/eks-platform-admin"
+  platform_admin_role_arn      = aws_iam_role.eks_platform_admin.arn
   tags                         = local.common_tags
 }
 
@@ -32,4 +32,24 @@ locals {
     Environment = var.env
     ManagedBy   = "Terraform"
   }
+}
+
+data "aws_iam_policy_document" "eks_admin_trust" {
+  statement {
+    actions = ["sts:AssumeRole"]
+
+    principals {
+      type = "AWS"
+      identifiers = [
+        data.aws_caller_identity.current.arn
+      ]
+    }
+  }
+}
+
+resource "aws_iam_role" "eks_platform_admin" {
+  name               = "eks-platform-admin"
+  assume_role_policy = data.aws_iam_policy_document.eks_admin_trust.json
+
+  tags = local.common_tags
 }

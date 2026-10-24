@@ -83,7 +83,7 @@ def validate_schema():
 def validate_helm():
     print("\nChecking PostgreSQL Helm chart...")
 
-    chart = "helm/postgres"
+    chart = str(ROOT / "helm/postgres")
 
     # Check the Helm chart for errors
     subprocess.run(
