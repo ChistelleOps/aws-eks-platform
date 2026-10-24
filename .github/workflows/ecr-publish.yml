@@ -16,36 +16,11 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-
-      
-      - name: Inspect GitHub workflow identity
-        env:
-          GH_REPOSITORY: ${{ github.repository }}
-          GH_REF: ${{ github.ref }}
-          GH_EVENT: ${{ github.event_name }}
-        run: |
-          echo "Repository: $GH_REPOSITORY"
-          echo "Ref: $GH_REF"
-          echo "Event: $GH_EVENT"
-      - name: Inspect OIDC claims
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const token = await core.getIDToken('sts.amazonaws.com');
-            const payload = JSON.parse(
-              Buffer.from(token.split('.')[1], 'base64url').toString()
-            );
-
-            console.log('Issuer:', payload.iss);
-            console.log('Audience:', payload.aud);
-            console.log('Subject:', payload.sub);
-
       - name: Configure AWS credentials using OIDC
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/aws-eks-platform-github-actions
           aws-region: us-east-1
-          retry-max-attempts: 1
 
       - name: Log in to Amazon ECR
         id: login-ecr
