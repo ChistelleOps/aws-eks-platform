@@ -27,7 +27,18 @@ jobs:
           echo "Repository: $GH_REPOSITORY"
           echo "Ref: $GH_REF"
           echo "Event: $GH_EVENT"
+      - name: Inspect OIDC claims
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const token = await core.getIDToken('sts.amazonaws.com');
+            const payload = JSON.parse(
+              Buffer.from(token.split('.')[1], 'base64url').toString()
+            );
 
+            console.log('Issuer:', payload.iss);
+            console.log('Audience:', payload.aud);
+            console.log('Subject:', payload.sub);
 
       - name: Configure AWS credentials using OIDC
         uses: aws-actions/configure-aws-credentials@v4
