@@ -1,0 +1,47 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: fastapi-alerts
+  namespace: monitoring
+  labels:
+    release: monitoring
+spec:
+  groups:
+    - name: fastapi.rules
+      rules:
+        - alert: FastAPIDown
+          expr: up{namespace="default",service="platform-api"} == 0
+          for: 2m
+          labels:
+            severity: critical
+          annotations:
+            summary: "FastAPI is down"
+            description: "Prometheus has been unable to scrape FastAPI for 2 minutes."
+
+        - alert: FastAPIHighErrorRate
+          expr: |
+            (
+              sum(rate(http_requests_total{namespace="default",service="platform-api",status="5xx"}[5m]))
+              /
+              clamp_min(sum(rate(http_requests_total{namespace="default",service="platform-api"}[5m])), 0.001)
+            ) > 0.05
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "FastAPI high error rate"
+            description: "More than 5% of FastAPI requests are returning HTTP 5xx errors."
+
+        - alert: FastAPIHighLatency
+          expr: |
+            (
+              sum(rate(http_request_duration_seconds_sum{namespace="default",service="platform-api"}[5m]))
+              /
+              clamp_min(sum(rate(http_request_duration_seconds_count{namespace="default",service="platform-api"}[5m])), 0.001)
+            ) > 0.5
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "FastAPI high latency"
+            description: "Average FastAPI response time exceeds 500 milliseconds."
