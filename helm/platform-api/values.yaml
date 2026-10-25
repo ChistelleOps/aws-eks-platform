@@ -1,0 +1,10 @@
+replicaCount: 1
+
+image:
+  repository: 452395238296.dkr.ecr.us-east-1.amazonaws.com/aws-eks-platform/platform-api
+  tag: "9d1a505595e7167e380e0286ba6c196d12209c05"
+  pullPolicy: IfNotPresent
+
+service:
+  type: ClusterIP
+  port: 8000
