@@ -1,0 +1,23 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: portfolio
+  namespace: argocd
+spec:
+  project: default
+
+  source:
+    repoURL: https://github.com/ChistelleOps/aws-eks-platform.git
+    targetRevision: main
+    path: helm/portfolio
+    helm:
+      releaseName: portfolio
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: default
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
