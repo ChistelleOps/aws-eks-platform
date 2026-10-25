@@ -6,7 +6,7 @@ This project demonstrates the evolution of a containerized application platform 
 
 The architecture separates infrastructure provisioning, container image delivery, Kubernetes application management, secrets management, and persistent storage.
 
-The AWS infrastructure was deployed and tested, then destroyed to minimize ongoing costs.
+The AWS infrastructure is provisioned for lab sessions and destroyed afterward to minimize ongoing costs.
 
 ## 2. Architecture Diagram
 
@@ -59,7 +59,7 @@ The AWS infrastructure was deployed and tested, then destroyed to minimize ongoi
               +-- PersistentVolumeClaim
 ```
 
-The GitHub Actions workflow publishes application images to ECR. Deployment of those images to EKS was not completed in this POC.
+GitHub Actions publishes application images to ECR. Argo CD renders their Helm charts and deploys both images to EKS. Services are currently internal ClusterIP services.
 
 ## 3. Infrastructure Layer — Terraform
 
@@ -119,12 +119,26 @@ Child Applications manage:
 - External Secrets configuration.
 - PostgreSQL.
 - Kubernetes storage configuration.
+- FastAPI platform API.
+- Nginx portfolio website.
 
 The parent Application was configured with automatic synchronization, pruning, and self-healing.
 
-The child Applications were observed as Synced and Healthy after troubleshooting. The parent remained OutOfSync at the final checkpoint, and its cause was not investigated.
+All six Applications (the parent and five children) were observed as Synced and Healthy.
 
-## 6. Secrets Management
+## 6. Application Workloads
+
+The FastAPI and portfolio applications each have their own Helm chart and Argo CD child Application.
+
+- `helm/platform-api`: Deployment, ClusterIP Service on port 8000, readiness and liveness checks at `/health`.
+- `helm/portfolio`: Deployment, ClusterIP Service on port 80, readiness and liveness checks at `/`.
+- ECR images are referenced by explicit Git commit tags in Helm values.
+- Verified FastAPI via `kubectl port-forward svc/platform-api 8000:8000` and `curl http://localhost:8000/health`.
+- Verified portfolio via `kubectl port-forward svc/portfolio 8081:80` and browser access at `http://localhost:8081`.
+
+There is no public Ingress yet. Updating the Helm image tags automatically after CI builds is also future work.
+
+## 7. Secrets Management
 
 AWS Secrets Manager stores PostgreSQL credentials.
 
@@ -136,7 +150,7 @@ An ExternalSecret creates or updates the Kubernetes Secret consumed by PostgreSQ
 
 This avoids storing PostgreSQL passwords directly in the Git repository.
 
-## 7. Persistent Storage
+## 8. Persistent Storage
 
 PostgreSQL requires persistent storage.
 
@@ -153,7 +167,7 @@ During testing, PostgreSQL successfully obtained a 20 GiB persistent volume.
 
 The `Retain` policy requires careful cleanup because deleting the Kubernetes claim does not automatically delete the underlying EBS volume.
 
-## 8. Deployment Sequence
+## 9. Deployment Sequence
 
 The platform was deployed in the following general order:
 
@@ -165,10 +179,12 @@ The platform was deployed in the following general order:
 6. Bootstrap the parent Argo CD Application.
 7. Synchronize the child Applications.
 8. Validate secrets, storage, and PostgreSQL health.
+9. Argo CD deploys FastAPI and portfolio from their Helm charts.
+10. Verify both pods, Services, and HTTP endpoints via port-forward.
 
 This sequence was not fully automated end to end. Some installation, secret initialization, and synchronization steps required manual intervention.
 
-## 9. Validation
+## 10. Validation
 
 The platform was validated using Terraform, AWS CLI, Kubernetes, and Argo CD.
 
@@ -186,29 +202,27 @@ kubectl get storageclass
 kubectl get pvc,pv -A
 ```
 
-## 10. Known Limitations
+## 11. Known Limitations
 
 The following capabilities were not completed:
 
-- Deployment of FastAPI and portfolio applications to EKS.
 - AWS Load Balancer Controller and Kubernetes Ingress.
 - Route 53 custom-domain routing.
 - ACM HTTPS integration.
 - Prometheus, Grafana, and alerting.
 - Fully automated platform bootstrap.
-- Complete validation of the parent Argo CD Application's synchronization status.
 
 These capabilities are candidates for the next platform engineering project.
 
-## 11. Teardown and Cost Management
+## 12. Teardown and Cost Management
 
-The development infrastructure was destroyed after testing.
+The development infrastructure is destroyed after testing to avoid unnecessary costs. Each new session requires rebuilding the lab.
 
 Terraform state was confirmed empty, and follow-up AWS CLI checks returned no remaining EC2 instances or EBS volumes in the project region.
 
 The Terraform backend and any resources created outside the Terraform development state require separate cleanup verification.
 
-## 12. Architecture Lessons
+## 13. Architecture Lessons
 
 The project demonstrated the importance of separating responsibilities:
 

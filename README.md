@@ -18,7 +18,7 @@ Containerize two applications and deploy them to Amazon ECS Fargate using Terraf
 
 Provision a Kubernetes cluster, configure AWS integrations, and deploy supporting platform services using Helm and Argo CD.
 
-**Status: Core platform implemented and tested. Advanced features deferred.**
+**Status: Core platform and both application deployments implemented and tested. Public ingress and observability are upcoming.**
 
 Both environments were designed to be temporary to minimize AWS costs.
 
@@ -30,7 +30,7 @@ Both environments were designed to be temporary to minimize AWS costs.
 | Portfolio | HTML, Nginx | 80 | Static portfolio website |
 | PostgreSQL | PostgreSQL | 5432 | Database workload for testing Kubernetes persistent storage and secrets |
 
-The FastAPI and portfolio applications were deployed and validated during the ECS phase. Their container images were also published to Amazon ECR through GitHub Actions.
+The FastAPI and portfolio applications were deployed and validated during both the ECS and EKS phases. GitHub Actions published their container images to Amazon ECR, and Argo CD deployed the existing images to EKS through Helm charts. Both were tested using local port forwarding.
 
 PostgreSQL was deployed and validated on EKS using Helm and Argo CD.
 
@@ -112,10 +112,10 @@ Implemented child Applications for:
 - External Secrets configuration.
 - PostgreSQL.
 - Kubernetes storage configuration.
+- FastAPI (`platform-api`).
+- Portfolio (`portfolio`).
 
-The child Applications were successfully synchronized and reported Healthy.
-
-The parent Application remained OutOfSync at the final observed checkpoint. Its root cause was not investigated before teardown.
+All six Applications, including the parent `platform-apps`, were confirmed Synced and Healthy.
 
 ### 4. Secrets Management
 
@@ -145,7 +145,16 @@ Configured persistent storage using:
 
 Verified that the PostgreSQL PVC successfully bound to a 20 GiB PersistentVolume and that the PostgreSQL Argo CD Application became Synced and Healthy.
 
-### 6. Troubleshooting
+### 6. FastAPI and Portfolio on EKS
+
+Created separate Helm charts in `helm/platform-api/` and `helm/portfolio/`, each with a Deployment, ClusterIP Service, and configurable image reference. Both use the existing Amazon ECR images and are deployed by child Argo CD Applications.
+
+- FastAPI: container and Service port `8000`; tested `/` and `/health` with `kubectl port-forward svc/platform-api 8000:8000`.
+- Portfolio: Nginx container and Service port `80`; tested in a browser with `kubectl port-forward svc/portfolio 8081:80`. Port `8081` was chosen locally to avoid a conflict with the Argo CD UI on `8080`.
+- Both applications were observed Synced/Healthy in Argo CD and tested successfully.
+- These are internal ClusterIP Services; public ALB ingress and HTTPS are not configured yet.
+
+### 7. Troubleshooting
 
 Investigated and resolved multiple deployment issues.
 
@@ -185,7 +194,9 @@ aws-eks-platform/
 │   ├── external-secrets/
 │   └── secrets/
 ├── helm/
-│   └── postgres/
+│   ├── postgres/
+│   ├── platform-api/
+│   └── portfolio/
 ├── kubernetes/
 │   ├── apps/
 │   └── storage/
@@ -234,7 +245,6 @@ GitHub
 
 The following features were part of the broader roadmap but were not completed in this POC:
 
-- Deploying the FastAPI and portfolio applications to EKS.
 - Kubernetes Ingress and AWS Load Balancer Controller.
 - HTTPS certificates using AWS Certificate Manager.
 - Custom-domain routing using Amazon Route 53.
@@ -298,12 +308,14 @@ Terraform backend resources, including the S3 state bucket, should be reviewed s
 | Argo CD and Helm | Implemented and tested |
 | External Secrets integration | Implemented and tested |
 | PostgreSQL persistent storage | Implemented and tested |
+| FastAPI on EKS | Deployed and tested via port-forward |
+| Portfolio on EKS | Deployed and tested via port-forward |
 | Ingress and HTTPS | Deferred |
 | Monitoring and alerting | Deferred |
 | Fully automated bootstrap | Deferred |
 | AWS infrastructure teardown | Completed, with additional resource checks recommended |
 
-The project is preserved in GitHub for reference and future improvements. The running development infrastructure has been destroyed to control AWS costs.
+The project is preserved in GitHub for repeatable lab rebuilds. Infrastructure is temporary and should be destroyed after lab sessions to control AWS costs; the latest session validated both application deployments.
 
 ## Author
 

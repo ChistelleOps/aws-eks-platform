@@ -4,7 +4,7 @@
 
 Repository: github.com/ChistelleOps/aws-eks-platform  •  Cluster: platform-dev-eks  •  Region: us-east-1
 
-Purpose: remove billable lab resources when not in use, then restore the working EKS → Argo CD → External Secrets → PostgreSQL environment. Commands must be run locally; this document does not execute them.
+Purpose: remove billable lab resources when not in use, then restore the working EKS → Argo CD → External Secrets → PostgreSQL → FastAPI + Portfolio environment. Commands must be run locally; this document does not execute them.
 
 ## 1. Before teardown — decide what to retain
 
@@ -148,7 +148,7 @@ kubectl get application platform-apps -n argocd -o jsonpath='{range .status.reso
 kubectl get application platform-apps -n argocd -o jsonpath='{.status.sync.status}{" / "}{.status.health.status}{"\n"}'
 ```
 
-## 7. Final health checks and next milestone
+## 7. Validate FastAPI and Portfolio
 
 ```bash
 kubectl get nodes
@@ -158,7 +158,33 @@ kubectl get pods -n external-secrets
 kubectl get pods,pvc -n default
 ```
 
-Last verified state (October 2026): all four Argo CD Applications Synced/Healthy, PostgreSQL pod Running 1/1, 20Gi gp3 PVC Bound. Next: create a FastAPI Helm chart and child Argo CD Application, reusing the existing ECR image.
+Last verified state (October 2026): all six Argo CD Applications Synced/Healthy, PostgreSQL pod Running 1/1, 20Gi gp3 PVC Bound, and both FastAPI and portfolio tested successfully.
+
+The parent `platform-apps` discovers `platform-api` and `portfolio` child Applications from GitHub. If either is missing, confirm the chart and Application files were committed and pushed to `main`, then refresh the parent Application.
+
+```bash
+kubectl get applications -n argocd
+kubectl get pods -l app=platform-api
+kubectl get svc platform-api
+kubectl get pods -l app=portfolio
+kubectl get svc portfolio
+
+# In one terminal, test FastAPI:
+kubectl port-forward svc/platform-api 8000:8000
+# In another terminal:
+curl http://localhost:8000/
+curl http://localhost:8000/health
+
+# Stop the FastAPI port-forward with Ctrl+C. Then test portfolio:
+kubectl port-forward svc/portfolio 8081:80
+# Open http://localhost:8081 in a browser.
+```
+
+Port 8081 is used locally because Argo CD may already use 8080. Stop port-forward processes with Ctrl+C before teardown.
+
+## 8. Final health checks and next milestone
+
+After validating both apps, the next milestone is AWS Load Balancer Controller, Ingress, ACM HTTPS, and Route 53 routing. These are not yet implemented.
 
 ## Quick checklist
 
@@ -169,4 +195,5 @@ Last verified state (October 2026): all four Argo CD Applications Synced/Healthy
 - Cluster: update kubeconfig → verify nodes Ready.
 - Services: install Argo CD → External Secrets → bootstrap GitOps.
 - Database: manually sync PostgreSQL if required → verify pod and PVC.
+- Applications: verify FastAPI and portfolio are Synced/Healthy → port-forward and test both.
 - At end of next lab: repeat teardown to avoid overnight costs.
