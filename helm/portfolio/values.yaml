@@ -8,3 +8,7 @@ image:
 service:
   type: ClusterIP
   port: 80
+ingress:
+  enabled: true
+  host: www.christelconsult.com
+  certificateArn: "arn:aws:acm:us-east-1:452395238296:certificate/c8ebc84f-ebc8-4eee-8fcb-9443d7c9caa2"
