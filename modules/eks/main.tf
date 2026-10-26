@@ -3,7 +3,7 @@ module "eks" {
   version = "~> 21.0"
 
   name               = var.cluster_name
-  kubernetes_version = "1.33"
+  kubernetes_version = "1.34"
 
   vpc_id     = var.vpc_id
   subnet_ids = var.private_subnet_ids
@@ -26,6 +26,7 @@ module "eks" {
   # EKS Managed Node Groups
   eks_managed_node_groups = {
     general = {
+      kubernetes_version = "1.34"
       instance_types = ["t3.medium"]
       capacity_type  = "ON_DEMAND"
 

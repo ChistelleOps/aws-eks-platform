@@ -521,7 +521,7 @@ Checks that:
 
 **3. Kubernetes schema validation**
 
-Uses kubeconform with strict validation against Kubernetes version `1.33.0`.
+Uses kubeconform with strict validation against Kubernetes version `1.34.0`.
 
 **4. Helm validation**
 
