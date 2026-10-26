@@ -1,109 +1,100 @@
-# AWS EKS Platform Engineering — Project Roadmap
+# AWS Container Platform — Project Roadmap
 
-## Project Goal
+> **Current focus:** Amazon EKS platform. The earlier ECS Fargate proof of concept is complete.
+>
+> **Status as of October 26, 2026:** EKS platform, GitOps, storage, secrets, application deployments, and monitoring have been tested. Public ingress and custom-domain HTTPS remain planned. The current EKS environment is running and should be torn down when testing is finished to control costs.
 
-Build a production-style, multi-tenant Kubernetes platform on AWS using Terraform, Amazon EKS, Argo CD, Helm, GitHub Actions, monitoring, and security best practices.
+## Goal
 
-Demonstrate practical DevOps, SRE, and Platform Engineering skills.
+Build a reproducible, cost-conscious AWS platform engineering lab that demonstrates infrastructure as code, container delivery, Kubernetes operations, GitOps, secrets, persistent storage, observability, incident response, and secure public application access.
 
-## Completed Milestones
+## Completed: ECS Fargate proof of concept
 
-### Milestone 1 — Application Development and CI/CD
-- [x] Build FastAPI application
-- [x] Containerize applications with Docker
-- [x] Configure GitHub Actions and Amazon ECR workflows
+- [x] Containerize FastAPI and portfolio applications.
+- [x] Build and publish images to Amazon ECR.
+- [x] Deploy and test applications on ECS Fargate with Terraform.
+- [x] Destroy the ECS test infrastructure after validation.
 
-### Milestone 2 — AWS Infrastructure
-- [x] Configure Terraform remote state in S3
-- [x] Build VPC, public/private subnets, routing, and NAT
-- [x] Provision EKS cluster and managed worker nodes
-- [x] Configure IAM and EKS access
-- [x] Configure EBS CSI driver
+## Milestone 1 — EKS infrastructure (completed)
 
-### Milestone 3 — GitOps
-- [x] Install Argo CD
-- [x] Implement App of Apps
-- [x] Deploy applications using Helm and GitOps
+- [x] Terraform remote state in S3.
+- [x] VPC, public/private subnets, route tables, internet gateway, NAT gateway.
+- [x] EKS cluster and managed worker nodes.
+- [x] IAM, EKS access entries, and Pod Identity agent.
+- [x] EBS CSI driver.
+- [x] Validate worker nodes and cluster access.
 
-### Milestone 4 — Storage and Secrets
-- [x] Deploy PostgreSQL
-- [x] Configure persistent storage
-- [x] Integrate AWS Secrets Manager
-- [x] Deploy External Secrets Operator
+## Milestone 2 — CI/CD and GitOps (completed)
 
-### Milestone 5 — Monitoring and Alerting
-- [x] Deploy Prometheus and Grafana
-- [x] Configure FastAPI metrics collection
-- [x] Create Grafana dashboard
-- [x] Configure three FastAPI alert rules
-- [x] Verify monitoring and alert rules
+- [x] GitHub Actions with AWS OIDC authentication and ECR image publishing.
+- [x] Helm charts for FastAPI and portfolio.
+- [x] Argo CD App-of-Apps deployment structure.
+- [x] Verify application sync and health.
 
-## Milestone 6 — Ingress, DNS, and HTTPS (Next)
+## Milestone 3 — Storage and secrets (completed)
 
-**Domain:** christelconsult.com  
-**Domain registrar:** IONOS  
-**AWS region:** us-east-1
+- [x] PostgreSQL deployment.
+- [x] `gp3` StorageClass and persistent volume claim.
+- [x] AWS Secrets Manager and External Secrets Operator.
+- [x] Validate database volume binding and synchronized credentials.
 
-### AWS Load Balancer Controller
-- [ ] Configure IAM permissions using EKS Pod Identity or IRSA
-- [ ] Install AWS Load Balancer Controller
-- [ ] Configure Kubernetes Ingress resources
-- [ ] Verify ALB and target groups
+## Milestone 4 — Observability (completed)
 
-### Route 53 and Domain
-- [ ] Create Route 53 public hosted zone for christelconsult.com
-- [ ] Update nameservers at IONOS
-- [ ] Verify DNS delegation
+- [x] Deploy kube-prometheus-stack (Prometheus, Grafana, Alertmanager).
+- [x] Expose FastAPI `/metrics` and configure ServiceMonitor.
+- [x] Verify Prometheus scrape target and HTTP request counters.
+- [x] Create and view FastAPI Grafana dashboard.
+- [x] Verify alert rules: `FastAPIDown`, `FastAPIHighErrorRate`, `FastAPIHighLatency`.
+- [ ] Document Grafana OOM/login troubleshooting and dashboard provisioning details.
 
-### HTTPS
-- [ ] Request ACM certificate
-- [ ] Validate certificate using DNS
-- [ ] Configure HTTPS listener on ALB
-- [ ] Redirect HTTP to HTTPS
+## Milestone 5 — Ingress, DNS, and HTTPS (next)
 
-### Application URLs
-- [ ] api.christelconsult.com → FastAPI
-- [ ] www.christelconsult.com → Portfolio
-- [ ] christelconsult.com → Portfolio (optional)
+**Domain:** `christelconsult.com`  
+**Registrar:** IONOS  
+**Planned DNS hosting:** Amazon Route 53  
+**Region:** `us-east-1`
 
-### Validation
-- [ ] Verify public DNS resolution
-- [ ] Test HTTPS endpoints
-- [ ] Verify ALB health checks and routing
-- [ ] Test deployment and rollback through Argo CD
+- [ ] Configure AWS Load Balancer Controller IAM permissions and install the controller.
+- [ ] Create Kubernetes Ingress rules for the applications.
+- [ ] Provision and verify an internet-facing Application Load Balancer (ALB).
+- [ ] Create a Route 53 public hosted zone.
+- [ ] Update domain nameservers at IONOS **after** reviewing existing DNS records and email dependencies.
+- [ ] Request an ACM certificate and validate it using DNS.
+- [ ] Configure HTTPS on ALB and HTTP-to-HTTPS redirect.
+- [ ] Route `api.christelconsult.com` to FastAPI.
+- [ ] Route `www.christelconsult.com` to the portfolio; decide whether the apex domain should redirect there.
+- [ ] Test DNS, TLS, ALB health checks, application routing, and GitOps rollback.
 
-## Milestone 7 — SRE, Reliability, and Security
-- [ ] Configure health probes and resource limits
-- [ ] Test Horizontal Pod Autoscaling
-- [ ] Perform controlled application failure tests
-- [ ] Test load and recovery
-- [ ] Review Kubernetes RBAC and network security
-- [ ] Validate backup and recovery procedures
+> Domain registration stays at IONOS. Route 53 can host DNS without transferring the registration.
 
-## Milestone 8 — Documentation and Portfolio
-- [ ] Finalize architecture diagram
-- [ ] Document deployment and teardown
-- [ ] Write Grafana troubleshooting runbook
-- [ ] Document common EKS and Argo CD incidents
-- [ ] Update GitHub README
-- [ ] Prepare project walkthrough for interviews
+## Milestone 6 — Reliability and security (planned)
 
-## Cost Management
+- [ ] Review readiness/liveness probes and CPU/memory requests/limits.
+- [ ] Test horizontal pod autoscaling under load.
+- [ ] Practice failure diagnosis and recovery; capture incident reports.
+- [ ] Review IAM least privilege, RBAC, network exposure, and secrets access.
+- [ ] Validate PostgreSQL backup/restore strategy.
+- [ ] Test rebuild and rollback procedures.
 
-This is a learning environment, not a continuously running production system.
+## Milestone 7 — Documentation and portfolio (in progress)
 
-- Keep EKS offline between testing sessions.
-- Validate Terraform and Helm configurations locally when possible.
-- Review retained EBS volumes and load balancers during teardown.
-- Check AWS billing after destroying infrastructure.
-- Rebuild EKS only when integration testing is required.
+- [x] Record External Secrets IAM and PostgreSQL PVC incidents.
+- [ ] Maintain root `README.md` with actual project status.
+- [ ] Write `docs/architecture.md` (deployed versus planned components).
+- [ ] Write `docs/monitoring.md` (queries, dashboards, rules, validation).
+- [ ] Write `docs/grafana-troubleshooting.md`.
+- [ ] Write and test `docs/aws-eks-teardown-rebuild-runbook.md`.
+- [ ] Add architecture diagrams and interview-ready project walkthrough.
 
-## Current Status
+## Cost and teardown checklist
 
-**Completed:** Milestones 1–5  
-**Next:** Milestone 6 — Ingress, DNS, and HTTPS  
-**Immediate priority:** Safely tear down the running EKS environment before continuing offline development.
+- [ ] Review PVCs, PVs, reclaim policies, and retained EBS volumes.
+- [ ] Before destroying the cluster, review any ALBs, target groups, or other Kubernetes-created AWS resources (once ingress is deployed).
+- [ ] Follow the documented teardown order, then run Terraform destroy for the development environment.
+- [ ] Verify EC2, EBS, load balancers, NAT gateways, and other chargeable resources are cleaned up as intended.
+- [ ] Check Secrets Manager and Route 53 resources separately: these may remain outside the EKS Terraform state and incur charges.
+- [ ] Review AWS billing; keep only intentionally retained resources, such as the S3 Terraform backend and domain registration.
 
-## Definition of Done
+## Definition of done
 
-The project is complete when applications can be deployed through GitOps, securely accessed through HTTPS using christelconsult.com, monitored, troubleshot, and rebuilt or destroyed reproducibly using infrastructure as code.
+The lab can be recreated from version-controlled infrastructure and GitOps configuration; both applications can be deployed and observed; public traffic reaches them securely via HTTPS and the chosen domain; recovery and teardown steps are documented and tested.
