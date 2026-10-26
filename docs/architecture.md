@@ -1,236 +1,169 @@
 # AWS Container Platform — Architecture
 
+> **Last reviewed:** October 26, 2026  
+> **Current state:** ECS Fargate proof of concept completed and torn down. EKS, GitOps, applications, storage, secrets, and monitoring implemented and tested. **Public Ingress, custom-domain DNS, and HTTPS are planned, not deployed.** The current EKS lab is running; verify cleanup before leaving it idle.
+
 ## 1. Overview
 
-This project demonstrates the evolution of a containerized application platform from Amazon ECS Fargate to Amazon EKS.
+This repository demonstrates a progression from a containerized Amazon ECS Fargate proof of concept to a reproducible Amazon EKS platform. Terraform provisions AWS infrastructure; GitHub Actions builds application images; Amazon ECR stores images; Helm and Argo CD deploy Kubernetes workloads; AWS Secrets Manager and External Secrets Operator supply credentials; EBS provides persistent storage; and Prometheus/Grafana provide observability.
 
-The architecture separates infrastructure provisioning, container image delivery, Kubernetes application management, secrets management, and persistent storage.
-
-The AWS infrastructure is provisioned for lab sessions and destroyed afterward to minimize ongoing costs.
-
-## 2. Architecture Diagram
+## 2. Implemented architecture
 
 ```text
-                      GitHub Repository
-                             |
-              +--------------+---------------+
-              |                              |
-       Terraform Code                 GitHub Actions
-              |                              |
-              v                              v
-      AWS Infrastructure              Docker Build
-              |                              |
-       +------+------+                       v
-       |             |                   Amazon ECR
-       v             v
-    Networking      IAM
-       |             |
-       +------+------+
-              |
-              v
-         Amazon EKS
-              |
-      +-------+--------+
-      |                |
-      v                v
-  Worker Nodes     EKS Add-ons
-      |                |
-      |           +----+------+
-      |           |           |
-      |        EBS CSI    Pod Identity
-      |
-      v
-    Argo CD
-      |
-      +-- External Secrets Configuration
-      |       |
-      |       v
-      |   AWS Secrets Manager
-      |
-      +-- StorageClass (gp3)
-      |       |
-      |       v
-      |    Amazon EBS
-      |
-      +-- PostgreSQL (Helm)
-              |
-              +-- Kubernetes Secret
-              |
-              +-- PersistentVolumeClaim
+GitHub repository
+  |-- Terraform ------------------> AWS VPC / IAM / EKS / managed nodes
+  |                                  |-- EBS CSI driver + EBS volumes
+  |                                  `-- EKS Pod Identity agent
+  |
+  |-- GitHub Actions (OIDC) ------> Amazon ECR (FastAPI + portfolio images)
+  |
+  `-- GitOps manifests -----------> Argo CD (App of Apps)
+                                       |
+                                       |-- External Secrets Operator
+                                       |      `--> AWS Secrets Manager
+                                       |              `--> PostgreSQL Kubernetes Secret
+                                       |
+                                       |-- gp3 StorageClass --> EBS PVC/PV
+                                       |                          `--> PostgreSQL
+                                       |
+                                       |-- FastAPI (ClusterIP :8000)
+                                       |      |-- /health
+                                       |      `-- /metrics --> ServiceMonitor
+                                       |
+                                       |-- Portfolio (ClusterIP :80)
+                                       |
+                                       `-- kube-prometheus-stack
+                                              |-- Prometheus <-- FastAPI metrics
+                                              |-- Grafana dashboards
+                                              `-- Prometheus alert rules
 ```
 
-GitHub Actions publishes application images to ECR. Argo CD renders their Helm charts and deploys both images to EKS. Services are currently internal ClusterIP services.
+**Important:** The diagram above shows implemented components. Applications are currently accessed for testing using `kubectl port-forward`, not public domain URLs.
 
-## 3. Infrastructure Layer — Terraform
+## 3. AWS infrastructure — Terraform
 
-Terraform provisions the AWS infrastructure.
+The development environment in `us-east-1` includes a VPC spanning two Availability Zones, two public and two private subnets, an internet gateway, NAT gateway, route tables, and security groups. Terraform provisions Amazon EKS, a managed EC2 node group, IAM roles/policies, EKS access entries, the EBS CSI driver, and the EKS Pod Identity agent. The cluster was validated with two Ready worker nodes on Kubernetes 1.34.
 
-### Networking
+Terraform state uses an S3 backend with versioning and encryption. Backend resources may have a separate lifecycle from the EKS development environment.
 
-The development VPC includes:
+## 4. Image delivery and application workloads
 
-- Two public subnets.
-- Two private subnets.
-- Internet Gateway.
-- NAT Gateway.
-- Route tables and subnet associations.
-- Security groups.
+GitHub Actions uses AWS OIDC to authenticate without storing long-lived AWS credentials, builds Docker images, and publishes them to Amazon ECR. Application deployments use Helm charts and Argo CD; image tags are managed in the repository.
 
-The subnets span two Availability Zones.
+| Workload | Kubernetes exposure | Validation |
+|---|---|---|
+| FastAPI (`platform-api`) | ClusterIP Service, port 8000 | `/`, `/health`, `/metrics` via port-forward |
+| Portfolio (Nginx) | ClusterIP Service, port 80 | Browser via port-forward |
+| PostgreSQL | Internal database workload, port 5432 | Pod health, credentials, bound PVC |
 
-### Amazon EKS
+Automatic promotion of new image tags from CI into GitOps remains a potential improvement; publishing an image does not by itself guarantee Argo CD deploys the new tag.
 
-Terraform provisions:
+## 5. GitOps — Argo CD
 
-- EKS control plane.
-- Managed EC2 worker nodes.
-- IAM roles and policies.
-- EKS access entries.
-- Amazon EBS CSI Driver.
-- EKS Pod Identity Agent.
+The parent Argo CD Application `platform-apps` discovers child Application definitions under `gitops/argocd/applications/`. The platform includes Applications for external-secrets configuration, PostgreSQL, storage, FastAPI, portfolio, monitoring, and monitoring dashboards. Eight Applications including the parent were observed Synced and Healthy during testing.
 
-The cluster was validated with two Ready worker nodes.
+Argo CD reconciles manifests from Git; some bootstrap tasks still require scripts or manual intervention. The repository includes scripts for Argo CD installation, External Secrets installation, and GitOps bootstrap.
 
-## 4. Container Build and Registry
+## 6. Secrets and persistent storage
 
-GitHub Actions authenticates to AWS using OpenID Connect (OIDC), avoiding long-lived AWS access keys in GitHub.
+AWS Secrets Manager stores PostgreSQL credentials. External Secrets Operator, authorized through AWS IAM and EKS Pod Identity, synchronizes credentials into a Kubernetes Secret through a ClusterSecretStore and ExternalSecret.
 
-The workflow builds container images and pushes them to Amazon ECR.
+The EBS CSI driver dynamically provisions encrypted `gp3` storage for PostgreSQL. The PostgreSQL claim bound to a 20 GiB persistent volume. The StorageClass uses `WaitForFirstConsumer`, supports expansion, and has a **Retain** reclaim policy. Deleting a PVC or destroying EKS may leave a chargeable EBS volume; check and clean it up deliberately.
 
-Two applications were containerized:
+## 7. Observability — implemented and tested
 
-- FastAPI backend.
-- Nginx portfolio website.
+`kube-prometheus-stack` is deployed to the `monitoring` namespace using Argo CD, with Prometheus, Grafana, Prometheus Operator, Alertmanager, node-exporter, and kube-state-metrics.
 
-Both applications were validated during the ECS Fargate POC.
+The FastAPI application exposes `/metrics` using `prometheus-fastapi-instrumentator`. A `ServiceMonitor` lets Prometheus discover and scrape the API approximately every 30 seconds. Validation confirmed:
 
-## 5. Kubernetes and GitOps Layer
+- `up{namespace="default",service="platform-api"}` returned `1`.
+- `http_requests_total` included `/metrics` and `/health` traffic.
+- A batch of 20 requests to `/` appeared in the HTTP request counter.
+- The FastAPI Grafana dashboard was visible and looked correct.
+- The rules `FastAPIDown`, `FastAPIHighErrorRate`, and `FastAPIHighLatency` were loaded in Prometheus.
 
-Argo CD was installed on EKS using Helm.
+**Scope of validation:** These checks confirm metric collection, dashboard visibility, and rule loading; they do not prove every alert notification path or every dashboard panel under sustained traffic.
 
-The GitOps configuration uses an App-of-Apps pattern.
+Grafana login troubleshooting identified a memory-limit-related `OOMKilled` restart. Grafana resource requests/limits were increased, an accidental invalid memory value was corrected, Argo CD was resynchronized, and login succeeded. This will be documented separately in `docs/grafana-troubleshooting.md`.
 
-The parent Application, `platform-apps`, monitors:
+Useful access commands:
 
-`gitops/argocd/applications/`
+```bash
+kubectl port-forward -n monitoring svc/monitoring-kube-prometheus-prometheus 9090:9090
+kubectl port-forward -n monitoring svc/monitoring-grafana 3000:80
+kubectl port-forward -n default svc/platform-api 8000:8000
+```
 
-Child Applications manage:
+## 8. Planned architecture — domain, Ingress, and HTTPS
 
-- External Secrets configuration.
-- PostgreSQL.
-- Kubernetes storage configuration.
-- FastAPI platform API.
-- Nginx portfolio website.
+The domain `christelconsult.com` is registered at **IONOS**. The next milestone is to use Amazon Route 53 for DNS while retaining IONOS as the registrar, and ACM for TLS certificates.
 
-The parent Application was configured with automatic synchronization, pruning, and self-healing.
+```text
+Public users
+     |
+     v
+christelconsult.com DNS (planned Route 53 hosted zone)
+     |
+     v
+AWS Application Load Balancer (planned)
+  |-- HTTPS :443 / ACM certificate (planned)
+  `-- Kubernetes Ingress rules (planned)
+          |-- api.christelconsult.com --> FastAPI Service :8000
+          `-- www.christelconsult.com --> Portfolio Service :80
+```
 
-All six Applications (the parent and five children) were observed as Synced and Healthy.
+Planned implementation steps:
 
-## 6. Application Workloads
+1. Configure IAM and install AWS Load Balancer Controller.
+2. Create and validate Kubernetes Ingress resources and ALB target groups.
+3. Create a Route 53 public hosted zone and update nameservers at IONOS.
+4. Request an ACM certificate and complete DNS validation.
+5. Configure HTTPS on the ALB and redirect HTTP to HTTPS.
+6. Test DNS, TLS, application health checks, routing, and GitOps rollback.
 
-The FastAPI and portfolio applications each have their own Helm chart and Argo CD child Application.
+**Not yet deployed:** AWS Load Balancer Controller, public ALB, Route 53 delegation, ACM certificate, and public HTTPS application endpoints. These resources may incur additional charges when provisioned.
 
-- `helm/platform-api`: Deployment, ClusterIP Service on port 8000, readiness and liveness checks at `/health`.
-- `helm/portfolio`: Deployment, ClusterIP Service on port 80, readiness and liveness checks at `/`.
-- ECR images are referenced by explicit Git commit tags in Helm values.
-- Verified FastAPI via `kubectl port-forward svc/platform-api 8000:8000` and `curl http://localhost:8000/health`.
-- Verified portfolio via `kubectl port-forward svc/portfolio 8081:80` and browser access at `http://localhost:8081`.
+## 9. Deployment and validation sequence
 
-There is no public Ingress yet. Updating the Helm image tags automatically after CI builds is also future work.
-
-## 7. Secrets Management
-
-AWS Secrets Manager stores PostgreSQL credentials.
-
-External Secrets Operator retrieves the secret using an AWS IAM role associated with a Kubernetes service account through EKS Pod Identity.
-
-A ClusterSecretStore defines access to AWS Secrets Manager.
-
-An ExternalSecret creates or updates the Kubernetes Secret consumed by PostgreSQL.
-
-This avoids storing PostgreSQL passwords directly in the Git repository.
-
-## 8. Persistent Storage
-
-PostgreSQL requires persistent storage.
-
-The EBS CSI Driver provisions Amazon EBS volumes for Kubernetes PersistentVolumeClaims.
-
-The project uses a `gp3` StorageClass with:
-
-- Encrypted EBS storage.
-- `WaitForFirstConsumer` volume binding.
-- Volume expansion support.
-- `Retain` reclaim policy.
-
-During testing, PostgreSQL successfully obtained a 20 GiB persistent volume.
-
-The `Retain` policy requires careful cleanup because deleting the Kubernetes claim does not automatically delete the underlying EBS volume.
-
-## 9. Deployment Sequence
-
-The platform was deployed in the following general order:
-
-1. Provision AWS networking, IAM, and EKS with Terraform.
-2. Configure AWS CLI and Kubernetes access.
-3. Install Argo CD using Helm.
-4. Install External Secrets Operator.
-5. Configure the required AWS secret value.
-6. Bootstrap the parent Argo CD Application.
-7. Synchronize the child Applications.
-8. Validate secrets, storage, and PostgreSQL health.
-9. Argo CD deploys FastAPI and portfolio from their Helm charts.
-10. Verify both pods, Services, and HTTP endpoints via port-forward.
-
-This sequence was not fully automated end to end. Some installation, secret initialization, and synchronization steps required manual intervention.
-
-## 10. Validation
-
-The platform was validated using Terraform, AWS CLI, Kubernetes, and Argo CD.
+1. Run Terraform validation/plan, then provision AWS infrastructure for a test session.
+2. Configure `kubectl` access and confirm worker nodes are Ready.
+3. Install Argo CD and External Secrets Operator using repository scripts.
+4. Ensure the PostgreSQL Secrets Manager value is initialized.
+5. Bootstrap the GitOps parent Application; reconcile child Applications.
+6. Validate ExternalSecret, StorageClass, PVC/PV, PostgreSQL, FastAPI, and portfolio.
+7. Verify monitoring targets, Grafana dashboard, and Prometheus alert rules.
+8. In a future session, validate Ingress, DNS, and HTTPS after implementing milestone 6.
+9. Tear down chargeable resources when testing is complete.
 
 Example commands:
 
 ```bash
+terraform fmt -check
 terraform validate
 terraform plan
-
 kubectl get nodes
-kubectl get pods -A
 kubectl get applications -n argocd
-kubectl get externalsecrets
-kubectl get storageclass
+kubectl get pods -A
+kubectl get externalsecrets -A
 kubectl get pvc,pv -A
+kubectl get servicemonitor,prometheusrule -A
 ```
 
-## 11. Known Limitations
+## 10. Troubleshooting and incident learning
 
-The following capabilities were not completed:
+Existing incident reports:
 
-- AWS Load Balancer Controller and Kubernetes Ingress.
-- Route 53 custom-domain routing.
-- ACM HTTPS integration.
-- Prometheus, Grafana, and alerting.
-- Fully automated platform bootstrap.
+- [`incidents&RCA/001-external-secrets-iam-access-denied.md`](incidents%26RCA/001-external-secrets-iam-access-denied.md): IAM/Secrets Manager access troubleshooting.
+- [`incidents&RCA/002-PostgreSQLPending.md`](incidents%26RCA/002-PostgreSQLPending.md): PostgreSQL Pending/PVC and StorageClass troubleshooting.
 
-These capabilities are candidates for the next platform engineering project.
+The Grafana memory/login incident is a separate documentation task. Keep incident timelines and fixes distinct from planned architecture.
 
-## 12. Teardown and Cost Management
+## 11. Cost management and lifecycle
 
-The development infrastructure is destroyed after testing to avoid unnecessary costs. Each new session requires rebuilding the lab.
+The ECS Fargate POC and an earlier EKS lab were torn down after testing. **The current EKS environment is running**, so earlier teardown results do not describe its current AWS resource inventory.
 
-Terraform state was confirmed empty, and follow-up AWS CLI checks returned no remaining EC2 instances or EBS volumes in the project region.
+Before destroying the environment, inspect persistent volumes and their reclaim policies. During teardown, verify EBS volumes, load balancers, NAT gateways, EC2 instances, Secrets Manager resources, and any other resources that may survive Terraform destroy. The S3 state backend may be retained intentionally. Review AWS billing separately; successful Terraform destroy alone does not prove zero ongoing charges.
 
-The Terraform backend and any resources created outside the Terraform development state require separate cleanup verification.
+## 12. Next steps
 
-## 13. Architecture Lessons
-
-The project demonstrated the importance of separating responsibilities:
-
-- Terraform provisions AWS infrastructure.
-- GitHub Actions builds and publishes container images.
-- Argo CD manages desired Kubernetes application state.
-- Helm packages Kubernetes workloads.
-- External Secrets Operator synchronizes credentials.
-- EBS CSI provisions persistent storage.
-
-A key improvement for future projects is to automate dependency ordering and platform bootstrapping so the environment can be reproduced consistently.
+See [`project-roadmap.md`](project-roadmap.md). The next implementation milestone is **AWS Load Balancer Controller → ALB Ingress → Route 53 → ACM → HTTPS** for `christelconsult.com`, followed by SRE resilience/security exercises and final portfolio documentation.
