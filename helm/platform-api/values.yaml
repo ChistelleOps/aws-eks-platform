@@ -2,7 +2,7 @@ replicaCount: 1
 
 image:
   repository: 452395238296.dkr.ecr.us-east-1.amazonaws.com/aws-eks-platform/platform-api
-  tag: "c507fa3d14576d78e70651c7b1edd8e5ff9a7baa"
+  tag: "068e3080923c9710546b4c8dd99dd5fa2701c27a"
   pullPolicy: IfNotPresent
 
 service:
