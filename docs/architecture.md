@@ -1,468 +1,195 @@
 # AWS Container Platform — Architecture
 
-**Last reviewed:** October 26, 2026
-
-**Current state:** ECS Fargate proof of concept completed and torn down. The AWS EKS platform is deployed and operational, including Terraform infrastructure, GitOps, application workloads, persistent storage, secrets management, Prometheus/Grafana monitoring, a shared Application Load Balancer, Route 53 DNS, and HTTPS using ACM.
-
-The portfolio and Platform API are accessible through their public HTTPS domains. The EKS development environment is currently running and incurs AWS charges.
+**Last reviewed:** October 27, 2026  
+**Implementation status:** End-to-end ECS and EKS platform successfully implemented and tested.  
+**Deployment status:** ECS lab torn down; latest EKS `env/dev` and DNS `env/dns` Terraform destroys succeeded. The public applications are currently offline. Final billing and orphan-resource audit remains pending.
 
 ## 1. Overview
 
-This repository demonstrates a progression from a containerized Amazon ECS Fargate proof of concept to a reproducible Amazon EKS platform. Terraform provisions AWS infrastructure; GitHub Actions builds application images; Amazon ECR stores images; Helm and Argo CD deploy Kubernetes workloads; AWS Secrets Manager and External Secrets Operator supply credentials; EBS provides persistent storage; and Prometheus/Grafana provide observability.
+This document describes **the architecture that was built and validated**, not an environment that is currently running. The repository progresses from an ECS Fargate proof of concept to a Terraform-provisioned Amazon EKS platform in `us-east-1`. Helm and Argo CD manage workloads, GitHub Actions delivers container images through ECR, AWS Secrets Manager supplies PostgreSQL credentials through External Secrets Operator, EBS provides persistent storage, and Prometheus/Grafana provide observability.
 
 ## 2. Implemented architecture
 
-The platform runs containerized applications on Amazon EKS in `us-east-1`. Terraform provisions AWS infrastructure, GitHub Actions builds application images, and Argo CD manages Kubernetes workloads through GitOps.
-
-### 2.1 Platform architecture
+### 2.1 Platform and delivery architecture
 
 ```text
-                         GitHub Repository
-                                |
-               +----------------+----------------+
-               |                                 |
-          GitHub Actions                       Terraform
-               |                                 |
-          Amazon ECR                    +--------+--------+
-               |                        |                 |
-               |                     env/dev           env/dns
-               |                        |                 |
-               |                    VPC + EKS       Route 53 + ACM
-               |                        |
-               |                  EKS Managed Nodes
-               |                        |
-               +------------------------+
-                                        |
-                                  Argo CD GitOps
-                                        |
-                    +-------------------+-------------------+
-                    |                   |                   |
-                Applications         Data Layer         Observability
-                    |                   |                   |
-                FastAPI              PostgreSQL         Prometheus
-                Portfolio            EBS gp3            Grafana
-                                        |
-                                  Secrets Manager
-                                  External Secrets
+Developer push to GitHub
+         |
+         v
+GitHub Actions (AWS OIDC, tests/build/push)
+         |                          \
+         v                           \ updates image tag in Git
+     Amazon ECR                      v
+         |                     Helm values in Git
+         |                           |
+         +---------------------------+
+                                     |
+                                     v
+                             Argo CD GitOps
+                                     |
+                           Amazon EKS (env/dev)
+                                     |
+                  +------------------+--------------------+
+                  |                  |                    |
+             FastAPI/Portfolio   PostgreSQL          Monitoring
+                  |                  |                    |
+           ClusterIP Services   PVC / EBS gp3      Prometheus/Grafana
+                  |                  |
+            Kubernetes Ingress  External Secrets
+                  |                  |
+         AWS Load Balancer       Secrets Manager
+             Controller
+                  |
+          Shared internet ALB
+                  |
+         Route 53 + ACM (env/dns)
+                  |
+            Browser over HTTPS
 ```
 
-### 2.2 Public application traffic
+The AWS Load Balancer Controller is bootstrapped separately from the parent Argo CD App-of-Apps, using a generated configuration with the VPC ID from Terraform output. The parent `platform-apps` manages the other child Applications.
+
+### 2.2 Public request path
 
 ```text
-                         Internet Users
-                               |
-                               v
-                     Amazon Route 53
-                               |
-                 +-------------+-------------+
-                 |                           |
-     www.christelconsult.com     api.christelconsult.com
-                 |                           |
-                 +-------------+-------------+
-                               |
-                               v
-                  Shared AWS Application
-                      Load Balancer
-                               |
-                        HTTPS :443
-                     ACM Certificate
-                               |
-                      Kubernetes Ingress
-                               |
-                 +-------------+-------------+
-                 |                           |
-             Portfolio                   Platform API
-          ClusterIP :80                ClusterIP :8000
-                 |                           |
-             Nginx Pod                   FastAPI Pod
-                                             |
-                                         PostgreSQL
+Browser
+  |
+  +-- https://www.christelconsult.com --+
+  |                                      |
+  +-- https://api.christelconsult.com ---+--> Route 53 alias
+                                                 |
+                                      Shared ALB (ACM TLS :443)
+                                                 |
+                                         Host-based Ingress
+                                                 |
+                          +----------------------+-------------------+
+                          |                                          |
+                   Portfolio Service :80                     API Service :8000
+                          |                                          |
+                      Nginx Pod                                  FastAPI Pod
+                                                                      |
+                                                                  PostgreSQL
 ```
 
-The AWS Load Balancer Controller provisions and manages the shared ALB from Kubernetes Ingress resources.
+Both Ingress resources used the `platform-public` group and an internet-facing ALB with `ip` targets. The AWS Load Balancer Controller managed the ALB lifecycle; Terraform **did not** directly create the ALB. Both public HTTPS URLs were verified in a browser on October 26, 2026. They are no longer active after teardown.
 
-Both applications use the Ingress group `platform-public`, allowing them to share one ALB.
+### 2.3 Resource ownership
 
-The public endpoints are:
-
-- `https://www.christelconsult.com` — Portfolio website
-- `https://api.christelconsult.com` — FastAPI application
-
-Route 53 alias records point both hostnames to the shared ALB. An ACM certificate covers the domain and its subdomains.
-
-### 2.3 Infrastructure ownership
-
-| Component | Managed by |
+| Component | Owner |
 |---|---|
-| VPC, subnets, EKS, IAM | Terraform (`env/dev`) |
-| Route 53, ACM, DNS aliases | Terraform (`env/dns`) |
-| AWS Application Load Balancer | AWS Load Balancer Controller |
-| Kubernetes applications | Argo CD |
-| Application images | GitHub Actions and Amazon ECR |
-| PostgreSQL persistent volumes | Kubernetes and EBS CSI |
-| Application secrets | AWS Secrets Manager and External Secrets Operator |
-| Metrics and dashboards | Prometheus and Grafana |
+| VPC, EKS, worker nodes, IAM, add-ons | Terraform `env/dev` |
+| Route 53 hosted zone, ACM certificate, validation and app aliases | Terraform `env/dns` |
+| ALB and target groups | AWS Load Balancer Controller via Kubernetes Ingress |
+| Workloads, storage configuration, monitoring | Argo CD and Helm |
+| Images and image-tag promotion | GitHub Actions, ECR, Git repository |
+| PostgreSQL volume | EBS CSI; reclaim policy `Retain` |
+| Credentials | AWS Secrets Manager, External Secrets Operator |
+| Remote Terraform state | Retained S3 backend, separate from lab stacks |
+| Domain registration | IONOS (retained) |
 
-### 2.4 Rebuild considerations
+## 3. Infrastructure
 
-The EKS development environment and DNS infrastructure have separate Terraform configurations.
+Terraform `env/dev` provisioned a VPC across two Availability Zones, public and private subnets, route tables, internet gateway, NAT gateway, security groups, EKS managed node group, EKS access entries, EBS CSI driver, and EKS Pod Identity agent. Two worker nodes were confirmed Ready in the initial implementation. Remote state uses S3 with versioning and encryption.
 
-The AWS Load Balancer Controller is bootstrapped separately from the parent Argo CD App-of-Apps. Its bootstrap template receives the VPC ID from Terraform output, avoiding a hardcoded VPC ID in Git.
+The project uses two Terraform stacks with different lifecycles. **`env/dns` depends on an ALB created by the Kubernetes controller**: `data.aws_lb.platform_public` looks up the ALB by tag `ingress.k8s.aws/stack = platform-public`.
 
-After an EKS rebuild:
+## 4. CI/CD and GitOps
 
-1. Provision the EKS infrastructure.
-2. Bootstrap the required Kubernetes controllers and Argo CD applications.
-3. Wait for the shared ALB to be created.
-4. Run Terraform for `env/dns` to update the application DNS aliases if the ALB has changed.
-5. Validate DNS resolution, HTTPS, and application availability.
+GitHub Actions authenticates with AWS through OIDC and pushes application images to ECR. The project initially used a manually dispatched ECR publishing workflow. An automated code-push delivery path was later implemented and tested:
 
-The Route 53 hosted zone and ACM certificate are intended to persist across EKS rebuilds. DNS aliases must be reviewed during teardown and rebuild because they depend on the lifecycle of the ALB.
+```text
+Code push -> GitHub Actions -> ECR image -> Helm image-tag update in Git
+          -> Argo CD sync -> new application version on EKS
+```
 
+An automated deployment reached the HTTPS API successfully. **Remaining improvements:** review exact workflow triggers/path filters, test gates, concurrency, prevention of recursive runs, deployment verification, and rollback safety. These are implementation tasks, not completed architecture features.
 
-## 3. AWS infrastructure — Terraform
+The Argo CD parent Application is `platform-apps`. Child Applications included `external-secrets-config`, `storage`, `postgres`, `platform-api`, `portfolio`, `monitoring`, and `monitoring-dashboards`. The `aws-load-balancer-controller` Application was bootstrapped separately. All nine Applications were confirmed Synced and Healthy during the running lab.
 
-The development environment in `us-east-1` includes a VPC spanning two Availability Zones, two public and two private subnets, an internet gateway, NAT gateway, route tables, and security groups. Terraform provisions Amazon EKS, a managed EC2 node group, IAM roles/policies, EKS access entries, the EBS CSI driver, and the EKS Pod Identity agent. The cluster was validated with two Ready worker nodes on Kubernetes 1.34.
+## 5. Storage and secrets
 
-Terraform state uses an S3 backend with versioning and encryption. Backend resources may have a separate lifecycle from the EKS development environment.
+AWS Secrets Manager held PostgreSQL credentials. External Secrets Operator, with IAM/EKS Pod Identity, synchronized a Kubernetes Secret through a ClusterSecretStore and ExternalSecret.
 
-## 4. Image delivery and application workloads
+PostgreSQL used a 20 GiB `gp3` EBS-backed PersistentVolumeClaim. The StorageClass used `WaitForFirstConsumer` and **`Retain`**, so deleting the PVC alone did not remove the billable EBS volume. The volume required deliberate cleanup during teardown.
 
-GitHub Actions uses AWS OIDC to authenticate without storing long-lived AWS credentials, builds Docker images, and publishes them to Amazon ECR. Application deployments use Helm charts and Argo CD; image tags are managed in the repository.
+## 6. Monitoring and alerting
 
-| Workload | Kubernetes exposure | Validation |
-|---|---|---|
-| FastAPI (`platform-api`) | ClusterIP Service, port 8000; public ALB Ingress | `https://api.christelconsult.com`; `/health` and `/metrics` also tested internally |
-| Portfolio (Nginx) | ClusterIP Service, port 80; public ALB Ingress | `https://www.christelconsult.com` verified in browser |
-| PostgreSQL | Internal database workload, port 5432 | Pod health, credentials, bound PVC |
+The `monitoring` namespace hosted `kube-prometheus-stack`: Prometheus, Grafana, Alertmanager, Prometheus Operator, node-exporter, and kube-state-metrics. FastAPI exposed `/metrics` through `prometheus-fastapi-instrumentator`, scraped via a ServiceMonitor. The lab validated:
 
-Automatic promotion of new image tags from CI into GitOps remains a potential improvement; publishing an image does not by itself guarantee Argo CD deploys the new tag.
+- `up{namespace="default",service="platform-api"} == 1`.
+- HTTP request counters increased after test traffic.
+- Grafana FastAPI dashboard with request rate, error rate, and latency panels.
+- Loaded alert rules `FastAPIDown`, `FastAPIHighErrorRate`, and `FastAPIHighLatency`.
 
-## 5. GitOps — Argo CD
-
-The parent Argo CD Application `platform-apps` discovers child Application
-definitions under `gitops/argocd/applications/`.
-
-The AWS Load Balancer Controller Application is bootstrapped separately using
-a generated manifest containing the VPC ID from Terraform output. This prevents
-the parent App-of-Apps from conflicting with the generated configuration.
-
-On October 26, 2026, all nine Argo CD Applications were verified as
-Synced and Healthy.
-
-## 6. Secrets and persistent storage
-
-AWS Secrets Manager stores PostgreSQL credentials. External Secrets Operator, authorized through AWS IAM and EKS Pod Identity, synchronizes credentials into a Kubernetes Secret through a ClusterSecretStore and ExternalSecret.
-
-The EBS CSI driver dynamically provisions encrypted `gp3` storage for PostgreSQL. The PostgreSQL claim bound to a 20 GiB persistent volume. The StorageClass uses `WaitForFirstConsumer`, supports expansion, and has a **Retain** reclaim policy. Deleting a PVC or destroying EKS may leave a chargeable EBS volume; check and clean it up deliberately.
-
-## 7. Observability — implemented and tested
-
-`kube-prometheus-stack` is deployed to the `monitoring` namespace using Argo CD, with Prometheus, Grafana, Prometheus Operator, Alertmanager, node-exporter, and kube-state-metrics.
-
-The FastAPI application exposes `/metrics` using `prometheus-fastapi-instrumentator`. A `ServiceMonitor` lets Prometheus discover and scrape the API approximately every 30 seconds. Validation confirmed:
-
-- `up{namespace="default",service="platform-api"}` returned `1`.
-- `http_requests_total` included `/metrics` and `/health` traffic.
-- A batch of 20 requests to `/` appeared in the HTTP request counter.
-- The FastAPI Grafana dashboard was visible and looked correct.
-- The rules `FastAPIDown`, `FastAPIHighErrorRate`, and `FastAPIHighLatency` were loaded in Prometheus.
-
-**Scope of validation:** These checks confirm metric collection, dashboard visibility, and rule loading; they do not prove every alert notification path or every dashboard panel under sustained traffic.
-
-Grafana login troubleshooting identified a memory-limit-related `OOMKilled` restart. Grafana resource requests/limits were increased, an accidental invalid memory value was corrected, Argo CD was resynchronized, and login succeeded. This will be documented separately in `docs/grafana-troubleshooting.md`.
-
-Useful access commands:
+**Monitoring was accessed locally through port-forwarding**, not through public domains:
 
 ```bash
+# Open the Prometheus UI at http://localhost:9090 while this runs.
 kubectl port-forward -n monitoring svc/monitoring-kube-prometheus-prometheus 9090:9090
+
+# In another terminal, open Grafana at http://localhost:3000.
 kubectl port-forward -n monitoring svc/monitoring-grafana 3000:80
-kubectl port-forward -n default svc/platform-api 8000:8000
 ```
 
-## 8. Public networking — ALB, Route 53, and HTTPS
+Optional future URLs `grafana.christelconsult.com` and `prometheus.christelconsult.com` would require new DNS/Ingress configuration **and authentication/access restrictions**. They have not been implemented.
 
-**Status:** Implemented and tested on October 26, 2026.
+A Grafana login issue was traced to `OOMKilled` restarts and resolved by correcting resource settings and resynchronizing Argo CD. Verified metric collection and loaded rules do not establish end-to-end alert notification testing.
 
-### 8.1 AWS Load Balancer Controller
+## 7. DNS and HTTPS
 
-The AWS Load Balancer Controller runs in Amazon EKS and provisions AWS load balancers based on Kubernetes Ingress resources.
+The domain `christelconsult.com` is registered at IONOS. The `env/dns` Terraform stack created a Route 53 public hosted zone, ACM certificate for the domain and wildcard subdomains, DNS validation records, and alias records for `api` and `www`. The ALB had HTTP and HTTPS listeners and an ACM certificate.
 
-The controller uses EKS Pod Identity for AWS permissions. Its Argo CD Application is generated during bootstrap using the VPC ID retrieved from Terraform output.
+**Rebuild dependency:** EKS -> controllers -> apps/Ingress -> shared ALB -> `env/dns` Terraform -> DNS delegation/ACM validation -> browser verification. If the Route 53 hosted zone is recreated, update IONOS to its **new** nameservers. HTTPS may need staged setup if Ingress initially requires a certificate that has not yet been issued.
 
-This avoids hardcoding a VPC ID that may change after rebuilding the EKS environment.
-
-### 8.2 Shared Application Load Balancer
-
-The FastAPI and portfolio applications use Kubernetes Ingress resources with:
-
-- Ingress class: `alb`
-- Ingress group: `platform-public`
-- ALB scheme: internet-facing
-- Target type: `ip`
-- HTTP listener: port 80
-- HTTPS listener: port 443
-- ACM certificate for HTTPS
-
-Both Ingress resources share one AWS Application Load Balancer.
-
-The AWS Load Balancer Controller manages the ALB lifecycle. Terraform does not create the ALB directly.
-
-### 8.3 Route 53 and ACM
-
-The domain `christelconsult.com` is registered with IONOS.
-
-Terraform in `env/dns` manages:
-
-- The Route 53 public hosted zone
-- The ACM certificate covering `christelconsult.com` and `*.christelconsult.com`
-- ACM DNS validation records
-- Route 53 alias records for the applications
-
-The DNS aliases are:
-
-| Domain | Destination |
-|---|---|
-| `api.christelconsult.com` | Shared AWS ALB |
-| `www.christelconsult.com` | Shared AWS ALB |
-
-Terraform discovers the ALB through the AWS tag:
-
-`ingress.k8s.aws/stack = platform-public`
-
-This avoids hardcoding the ALB's generated name or DNS address in Terraform.
-
-### 8.4 Validation
-
-On October 26, 2026:
-
-- Both Kubernetes Ingress resources received the same ALB DNS address.
-- Both Route 53 aliases were created successfully using Terraform.
-- DNS queries returned IP addresses for both domains.
-- Both public HTTPS application URLs were accessible in a browser.
-- All nine Argo CD Applications were Synced and Healthy.
-
-These checks confirm public DNS resolution and successful browser access over HTTPS. Additional testing of HTTP-to-HTTPS redirects, ALB target health, and failure recovery can be performed as reliability exercises.
-
-### 8.5 Rebuild dependency
-
-The DNS infrastructure is intended to persist independently of the EKS cluster.
-
-When EKS is rebuilt, the AWS Load Balancer Controller may create a new ALB with a different DNS address.
-
-The correct recovery sequence is:
-
-1. Rebuild EKS using Terraform.
-2. Bootstrap the AWS Load Balancer Controller and Argo CD.
-3. Deploy the application Ingress resources.
-4. Wait until the shared ALB exists.
-5. Apply `env/dns` Terraform to update the Route 53 aliases.
-6. Verify DNS resolution and HTTPS access.
-
-During teardown, check whether DNS aliases still reference an ALB that has been deleted. Persistent Route 53 and ACM resources should be managed separately from temporary EKS resources.
-
-## 9. Deployment and validation sequence
-
-The platform uses two Terraform environments:
-
-- `env/dev` — EKS, networking, IAM, and supporting infrastructure.
-- `env/dns` — Persistent Route 53, ACM, and application DNS records.
-
-The deployment order matters because some resources depend on infrastructure created by Kubernetes.
-
-### 9.1 Provision AWS infrastructure
-
-Validate and provision the EKS development environment:
+**Teardown dependency:** Stop deployment automation -> destroy `env/dns` while the ALB exists -> delete app Ingress resources and wait for ALB deletion -> clean retained EBS -> destroy `env/dev` -> audit remaining AWS resources. In the last teardown, the ALB was already deleted before DNS destroy, so the normal DNS refresh failed with `Search returned 0 results` on `data.aws_lb.platform_public`. The reviewed recovery command was:
 
 ```bash
-terraform -chdir=env/dev init
-terraform -chdir=env/dev validate
-terraform -chdir=env/dev plan
-terraform -chdir=env/dev apply
+# Use the recorded Terraform state when the ALB lookup can no longer succeed.
+# Review the destruction plan carefully because state may be stale.
+terraform -chdir=env/dns destroy -refresh=false
 ```
 
-Configure Kubernetes access using the EKS platform administrator role:
+The DNS stack **was destroyed** on October 27, 2026; contrary to the earlier design, it was not retained. The IONOS registration and Terraform source code remain.
 
-```bash
-aws eks update-kubeconfig \
-  --region us-east-1 \
-  --name platform-dev-eks \
-  --role-arn arn:aws:iam::452395238296:role/eks-platform-admin
-```
+## 8. Operational lifecycle and validation
 
-Verify cluster connectivity:
+### Build and validate
 
-```bash
-kubectl get nodes
-```
+1. Verify AWS account, region, budget, and retained S3 backend.
+2. Apply `env/dev` and connect `kubectl` to EKS.
+3. Run `scripts/bootstrap_gitops.sh` after confirming its current behavior and dependencies.
+4. Confirm Argo CD Applications, PostgreSQL PVC, Secrets, and monitoring are healthy.
+5. Confirm Ingress has created the shared ALB.
+6. Apply `env/dns`, delegate the domain if nameservers changed, and validate ACM.
+7. Open `https://api.christelconsult.com` and `https://www.christelconsult.com` in a browser.
+8. Access monitoring through port-forwarding; confirm real metrics and dashboards.
+9. Push a test change and verify GitHub Actions -> ECR -> Argo CD -> browser.
 
-### 9.2 Bootstrap platform controllers
+### Tear down and verify
 
-Install Argo CD and External Secrets Operator using the repository's installation scripts.
+1. Pause automation and review destructive scope.
+2. Destroy DNS while ALB still exists.
+3. Remove Ingress and verify the ALB is deleted.
+4. Stop PostgreSQL, delete PVC, and remove any retained EBS volume when detached.
+5. Destroy `env/dev`, preserving `bootstrap/` and the S3 backend.
+6. Audit ECR, CloudWatch logs, snapshots, Elastic IPs, Secrets Manager, Route 53, and AWS billing.
 
-Ensure the PostgreSQL credential exists in AWS Secrets Manager before deploying dependent workloads.
+Detailed commented commands and completion checkpoints belong in the separate **rebuild/teardown runbook**. Architecture describes *what connects to what* and *why*, rather than duplicating every command.
 
-Run:
+## 9. Troubleshooting lessons
 
-```bash
-bash scripts/bootstrap_gitops.sh
-```
+- External Secrets sync failed because of an IAM ARN region mismatch and an empty Secrets Manager secret.
+- PostgreSQL PVC remained Pending until the `gp3` StorageClass was added through GitOps.
+- Grafana login issues resulted from memory-related container restarts.
+- DNS destroy failed after the ALB was deleted; `-refresh=false` allowed teardown without changing reusable Terraform code.
+- A `Retain` PV reclaim policy required manual EBS cleanup.
 
-The bootstrap script retrieves the current VPC ID from Terraform and generates the AWS Load Balancer Controller Application.
+## 10. Current status and remaining work
 
-It then applies the parent Argo CD Application, `platform-apps`.
+**Built and verified:** ECS POC, EKS networking and IAM, GitOps applications, PostgreSQL, secrets, monitoring, shared ALB, Route 53, ACM HTTPS, and push-triggered application delivery.
 
-### 9.3 Verify GitOps applications
+**Destroyed:** ECS POC and the latest EKS/DNS Terraform environments. Application endpoints are offline. **Not yet fully verified:** absence of all orphaned chargeable AWS resources.
 
-```bash
-kubectl get applications -n argocd
-```
+**Remaining platform implementation:** CI/CD hardening and rollback tests; DevSecOps scans and policy gates; autoscaling and failure recovery; backup/restore; monitoring alert notification tests; optional secure monitoring browser endpoints; documentation and cost audit.
 
-The expected applications include:
-
-- `platform-apps`
-- `aws-load-balancer-controller`
-- `external-secrets-config`
-- `storage`
-- `postgres`
-- `platform-api`
-- `portfolio`
-- `monitoring`
-- `monitoring-dashboards`
-
-Verify that applications are Synced and Healthy.
-
-### 9.4 Verify workloads and persistent storage
-
-```bash
-kubectl get pods -A
-kubectl get externalsecrets -A
-kubectl get pvc -A
-kubectl get pv
-```
-
-Confirm that PostgreSQL is running, its PVC is bound, and application pods are healthy.
-
-### 9.5 Verify the shared ALB
-
-```bash
-kubectl get ingress -A
-```
-
-Confirm that both `platform-api` and `portfolio` have the same ALB address.
-
-The AWS Load Balancer Controller creates the ALB from Kubernetes Ingress resources.
-
-### 9.6 Configure DNS
-
-After the ALB exists, run:
-
-```bash
-terraform -chdir=env/dns init
-terraform -chdir=env/dns validate
-terraform -chdir=env/dns plan
-terraform -chdir=env/dns apply
-```
-
-Terraform discovers the ALB using its `ingress.k8s.aws/stack` tag and manages the Route 53 alias records.
-
-Review the Terraform plan before applying changes, especially when working with persistent DNS infrastructure.
-
-### 9.7 Validate public endpoints
-
-Check DNS resolution:
-
-```bash
-dig +short api.christelconsult.com
-dig +short www.christelconsult.com
-```
-
-Check HTTPS:
-
-```bash
-curl -I https://api.christelconsult.com
-curl -I https://www.christelconsult.com
-```
-
-An application-specific HTTP status, such as `404` for an undefined API route, does not necessarily indicate an infrastructure failure.
-
-Verify the application routes separately.
-
-### 9.8 Verify monitoring
-
-Confirm that Prometheus is collecting application metrics and that Grafana dashboards are accessible.
-
-```bash
-kubectl get servicemonitor,prometheusrule -A
-```
-
-Review the monitoring documentation for dashboard access and metric validation.
-
-### 9.9 Teardown and rebuild
-
-Use `docs/aws-eks-teardown-rebuild-runbook.md` for the detailed teardown and rebuild procedure.
-
-Before destroying EKS, review resources that may survive cluster deletion, including retained EBS volumes, Secrets Manager secrets, DNS records, and the Terraform state backend.
-
-The DNS environment has a separate lifecycle and should not be destroyed as part of routine EKS testing.
-
-After rebuilding EKS, repeat the ALB and DNS validation steps because the new ALB may have a different DNS address.
-
-
-## 10. Troubleshooting and incident learning
-
-Existing incident reports:
-
-- [`incidents&RCA/001-external-secrets-iam-access-denied.md`](incidents%26RCA/001-external-secrets-iam-access-denied.md): IAM/Secrets Manager access troubleshooting.
-- [`incidents&RCA/002-PostgreSQLPending.md`](incidents%26RCA/002-PostgreSQLPending.md): PostgreSQL Pending/PVC and StorageClass troubleshooting.
-
-The Grafana memory/login incident is documented separately in
-`docs/grafana-troubleshooting.md`. It covers the OOMKilled restart,
-resource-limit adjustments, Argo CD reconciliation, and successful
-Grafana login.
-
-## 11. Cost management and lifecycle
-
-The ECS Fargate POC and an earlier EKS lab were torn down after testing. **The current EKS environment is running**, so earlier teardown results do not describe its current AWS resource inventory.
-
-Before destroying the environment, inspect persistent volumes and their reclaim policies. During teardown, verify EBS volumes, load balancers, NAT gateways, EC2 instances, Secrets Manager resources, and any other resources that may survive Terraform destroy. The S3 state backend may be retained intentionally. Review AWS billing separately; successful Terraform destroy alone does not prove zero ongoing charges.
-
-## 12. Next steps
-
-The core AWS EKS platform, GitOps deployment, public networking, DNS, and HTTPS milestones are complete.
-
-The next phase focuses on improving operational maturity and production-readiness practices.
-
-### Priority 1 — CI/CD improvements
-
-- Automate image promotion from GitHub Actions to GitOps manifests.
-- Add automated application tests and container image scanning.
-- Validate deployment and rollback procedures.
-
-### Priority 2 — Security
-
-- Review IAM permissions and EKS Pod Identity access.
-- Implement Kubernetes NetworkPolicies and workload security contexts.
-- Add infrastructure security scanning.
-
-### Priority 3 — Reliability and observability
-
-- Test Prometheus alert notifications.
-- Configure and test Horizontal Pod Autoscaling.
-- Validate readiness/liveness probes and resource limits.
-- Perform controlled failure and recovery exercises.
-
-### Priority 4 — Backup and disaster recovery
-
-- Implement PostgreSQL backups to S3.
-- Test database restoration.
-- Document recovery time and recovery point objectives.
-
-### Priority 5 — Portfolio readiness
-
-- Finalize architecture and deployment documentation.
-- Update the project roadmap.
-- Record AWS operating costs and cleanup procedures.
-- Prepare technical explanations and demonstrations for Platform Engineering and SRE interviews.
-
-See `docs/project-roadmap.md` for the detailed implementation roadmap.
+See `docs/project-roadmap.md` for feature status and the project runbook for exact commands. Rebuilding the same platform on AWS or GCP for personal practice is a separate learning activity, not an unfinished architecture feature.
